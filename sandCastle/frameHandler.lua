@@ -5,7 +5,7 @@ local L = sandCastle.localize
 
 local utility = sandCastle.utility
 
-
+--frame position handling
 
 do-- frame settings
 	function sandCastle:SetFrameSets(id, sets)
@@ -113,17 +113,12 @@ do-- frame settings
 					y, stick = 0, true
 				end
 				if stick then
-					sandCastle.SetAbsolutePosition(widget, point, widget.frame:GetParent(), relPoint, x, y)
+					sandCastle.SetAbsolutePosition(widget, point, widget.frame, relPoint, x, y)
 					return true
 				end
 			end
 		end
 		
-		--if not sandCastle:GetAlignmentGridEnabled() then
-			--return
-		--end
-
-
 		if not sandCastle:GridShown() then return end
 
 		local xScale, yScale, xOffset, yOffset = sandCastle:GetGridScale()
@@ -150,7 +145,7 @@ do-- frame settings
 		end
 		
 		if point then
-			sandCastle.SetAbsolutePosition(widget, point, widget.frame:GetParent(), "BOTTOMLEFT", x, y)
+			sandCastle.SetAbsolutePosition(widget, point, widget.frame, "BOTTOMLEFT", x, y)
 			return true
 		end
 	end
@@ -256,10 +251,8 @@ do-- frame settings
 	-- absolute positioning
 	function sandCastle.SetAbsolutePosition(widget, point, relFrame, relPoint, x, y)
 		widget.frame:ClearAllPoints()
-		
 		local eScale = widget:GetEffectiveScale()
-		
-		widget.frame:SetPoint(point, relFrame, relPoint, x * eScale, y * eScale)
+		widget.frame:SetPoint(point, relFrame:GetParent(), relPoint, x * eScale, y * eScale)
 	end
 
 	-- loading and positioning
@@ -325,5 +318,16 @@ do-- frame settings
 	function sandCastle.Setup(widget)
 		sandCastle.Reanchor(widget)
 		widget:Layout()
+	end
+
+	--frame and container sizing
+	function sandCastle.Resize(widget)
+		local w, h = widget:GetSize()
+		local pad = widget.sets.padding or 0
+
+
+		local scale = widget:GetScale()
+
+		widget.fame:SetSize(w * scale + pad, h * scale + pad)
 	end
 end

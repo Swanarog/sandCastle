@@ -1,7 +1,8 @@
-local AddonName, sandCastle = ...
+local AddonName, Addon = ...
+local sandCastle = _G.LibStub("AceAddon-3.0"):GetAddon(...)
 
 -- Options Menu, maybe?
-local menus = sandCastle.utility.getTable()
+local menus = Addon:NewModule('OptionsMenu')
 
 local OPTS = {}
 
@@ -43,10 +44,9 @@ function OPTS.slider(menu, title, get, set, values)
 
 	sliderIndex = sliderIndex + 1
 
-	local slider = CreateFrame("Slider", "sandCastleSlider"..sliderIndex, menu, "HorizontalSliderTemplate")
+	local slider = CreateFrame("Slider", AddonName.."Slider"..sliderIndex, menu, "HorizontalSliderTemplate")
 
-
-	 slider:SetHitRectInsets(0, 0, 5, 5)
+	 slider:SetHitRectInsets(0, 0, -10, 3)
 	if menu.lastItem then
 
 		slider:SetPoint("TopLeft", menu.lastItem, "BottomLeft", 5, -15)
@@ -63,8 +63,9 @@ function OPTS.slider(menu, title, get, set, values)
 	slider:SetValueStep(step)
 	
 	slider:SetScript("OnShow", function()
-		if get and get(menu.widget) then
-			slider:SetValue(get(menu.widget))
+		local func = slider.get or get
+		if func and func(menu.widget) then
+			slider:SetValue(func(menu.widget))
 		else
 			slider:SetValue(_min + ((math.abs(_min) + math.abs(_max)) /2))
 		end
@@ -72,17 +73,12 @@ function OPTS.slider(menu, title, get, set, values)
 
 	local editbox = CreateFrame("EditBox", nil, slider)
 
-	
 	slider:SetScript("OnValueChanged", function(_, value)
-		if set then
-			set(menu.widget, value)
-		end
-		editbox:SetText(value)
-	end)
 	
-	slider:SetScript("OnValueChanged", function(_, value)
-		if set then
-			set(menu.widget, value)
+		local func = slider.set or set
+	
+		if func then
+			func(menu.widget, value)
 		end
 		editbox:SetText(math.floor(value))
 	end)
@@ -92,7 +88,6 @@ function OPTS.slider(menu, title, get, set, values)
 	slider.title:SetPoint("BottomLeft", slider, "TopLeft")
 	slider.title:SetJustifyH("LEFT")
 	slider.title:SetJustifyV("TOP") 
-	
 	
 	slider:SetScript("OnMouseWheel", function(_,delta)
 		local _step = (IsShiftKeyDown() == true) and shiftStep
@@ -120,7 +115,6 @@ function OPTS.slider(menu, title, get, set, values)
 	editbox:SetScript("OnEnterPressed", function() slider:SetValue(tonumber(editbox:GetText())) end)
 	editbox:SetScript("OnEscapePressed", function() editbox:ClearFocus() editbox:SetText(math.floor(slider:GetValue())) end)
 		
-
 	menu.lastItem = slider
 	
 	slider.height = slider:GetHeight() + slider.title:GetHeight() + 3
@@ -128,65 +122,418 @@ function OPTS.slider(menu, title, get, set, values)
 	return slider
 end
 
+local function tIndexOf(tbl, item)
+		for i, v in pairs(tbl) do
+			if item == v then
+				return i;
+			end
+		end
+	end
+
+function OPTS.editBox(menu, title, get, set)
+	local editBox = CreateFrame("EditBox", nil, menu, "BackdropTemplate")
+	--editBox:SetPoint("TopLeft", 0, 0)
+	editBox:SetFontObject("GameFontNormal")
+
+	editBox.title = editBox:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	editBox.title:SetText(title)
+	editBox.title:SetPoint("BottomLeft", editBox, "TopLeft", 0 , 2)
+	editBox.title:SetJustifyH("LEFT")
+	editBox.title:SetJustifyV("TOP") 
+	
+	editBox:SetBackdrop({
+		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+		edgeFile = "Interface\\Glues\\Common\\TextPanel-Border",
+		tile = true,
+		tileEdge = true,
+		tileSize = 32,
+		edgeSize = 8,
+		insets = { left = 2, right = 2, top = 2, bottom = 2 },
+	})
+	editBox:SetTextInsets(8, 8, 5, 5)
+
+	editBox:SetBackdropColor(0,0,0)
+	editBox:SetMultiLine(true)
+	editBox:SetAutoFocus(false)
+
+	editBox:SetScript("OnEnterPressed", function(_, text)
+		local func = editBox.set or set
+		if func then
+			func(menu.widget, editBox:GetText())
+		end
+		editBox.TEXT = nil
+		editBox:ClearFocus()
+	end)
+	
+	editBox:SetScript("OnEscapePressed", function(_, text)
+		editBox:ClearFocus()
+	end)
+	
+	editBox:SetScript("OnEditFocusGained", function(_, text)
+		editBox.TEXT = editBox:GetText()
+	end)
+	
+	editBox:SetScript("OnEditFocusLost", function(_, text)
+		if editBox.TEXT then
+			editBox:SetText(editBox.TEXT)
+		end
+	end)
+
+	editBox:SetScript("OnShow", function(_, text)
+		local func = editBox.get or get
+		if func then
+			editBox:SetText(func(menu.widget) or "")
+		end
+		
+	end)
+	
+	editBox:SetSize(menu:GetWidth()-10, 100)
+
+	editBox.height =  editBox:GetHeight() + editBox.title:GetHeight() + 3
+	
+	return editBox
+end
+
+function OPTS.dropDown(menu, title, get, set, options)
+	local block  = CreateFrame("Frame", nil , menu)
+	local button = CreateFrame("Frame", nil, block, "UIDropDownMenuTemplate")
+	
+	block:SetSize(40, 45)
+	button.Text:SetText(title or "")
+	
+	button.title = button:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	button.title:SetText(title)
+	button.title:SetPoint("TopLeft", block, "TopLeft", 0,-2)
+	button.title:SetJustifyH("LEFT")
+	button.title:SetJustifyV("TOP") 
+	
+	button:SetPoint("BottomLeft" , -17, 0)
+	button:SetPoint("Top", block, "Bottom" , 0, 32)
+	
+	local poo = {}
+	for i , details in pairs((type(options) == "function" and options()) or menu.options or options or {}) do
+		local text, value = unpack(details)
+		poo[text] = value
+ 	end
+	
+	UIDropDownMenu_Initialize(button, function(button, menuLevel, menuList)
+		if menuLevel == nil then return end
+		for i , details in pairs((type(options) == "function" and options()) or menu.options or options or {}) do
+			local info = UIDropDownMenu_CreateInfo()
+			info.text, info.value = unpack(details)
+	
+			local func = button.get or get
+			if func then
+				info.selected = func(menu.widget) == info.value
+			end
+			
+			info.func = function()
+				local func = button.set or set
+				if func then
+					func(menu.widget, info.value)
+					UIDropDownMenu_SetSelectedValue(button, info.value, useValue)
+				end
+			end
+			UIDropDownMenu_AddButton(info, menuLevel)
+		end
+	
+		local func = button.get or get
+		if func then
+			UIDropDownMenu_SetSelectedValue(button, func(menu.widget), useValue)
+		end
+	end)
+	
+	block:SetScript("OnShow", function()
+		local func = button.get or get
+		if func then
+			UIDropDownMenu_SetText(button, tIndexOf(poo, func(menu.widget)))
+		end
+	end)
+	
+	block.height = block:GetHeight() --+ button.title:GetHeight()
+
+	return block
+end
+
 local dropIndex = 0
-	local GetRelPos = function(self)
-		local width, height = GetScreenWidth()/self:GetScale(), GetScreenHeight()/self:GetScale()
-		local x, y = self:GetCenter()
-		local xOffset, yOffset
-		local Hori = (x > width/2) and 'RIGHT' or 'LEFT'
-		if Hori == 'RIGHT' then
-			xOffset = self:GetRight() - width
-		else
-			xOffset = self:GetLeft()
+
+local function pageHandler(menu)
+	local dropDown = CreateFrame("Button", menu:GetName().."dropDown"..dropIndex, menu, "UIDropDownMenuTemplate")
+	dropDown.Text:SetFontObject(GameFontNormal)
+	dropDown:SetPoint("TopLeft",-5, -38)
+	dropIndex = dropIndex + 1
+	dropDown:SetScale(.75)
+
+	UIDropDownMenu_Initialize(dropDown, function(button, menuLevel, menuList)
+		if menuLevel == nil then return end
+		for i , panel in pairs(menu.options) do
+			local name, opts = unpack(panel)
+			if menu.active and menu.active.id == name then
+			
+			else
+				local info = UIDropDownMenu_CreateInfo()
+				info.notCheckable = true
+				info.text = name
+				info.value = name
+				info.func = function()
+					if menu.active then
+						menu.active:Hide()
+					end
+					menu.panels[i]:Show()
+					
+					UIDropDownMenu_SetText(button, name)
+				end
+				UIDropDownMenu_AddButton(info, menuLevel)
+			end
 		end
-		local Vert = (y > height/2) and 'TOP' or 'BOTTOM'
-		if Vert == 'TOP' then
-			yOffset = self:GetTop() - height
-		else
-			yOffset = self:GetBottom()
+	end)
+
+
+	return dropDown
+end
+
+function OPTS.panel(menu, name, options)
+	local parentPanel = menu.SettingsPanel
+	local widget = menu.widget
+	menu.dropDown = menu.dropDown or pageHandler(menu)
+
+	local subPanel = CreateFrame("Frame", nil, parentPanel)
+	subPanel:SetPoint("TopLeft", menu, 5, -45)
+	tinsert(menu.panels, subPanel)
+	subPanel:SetSize(140, 245)
+	subPanel.widget = widget
+	subPanel.widgets = {}
+	subPanel.id = name
+	subPanel:Hide()
+
+	subPanel.scoller = CreateFrame("Slider", (widget.displayID or widget.id).."Slider", menu, "HorizontalSliderTemplate")
+
+	subPanel.scoller:SetOrientation("VERTICAL")
+
+	subPanel.scoller:SetPoint("BottomLeft", menu, "BottomRight", -4, -2)
+
+	subPanel.scoller:SetSize(11, menu:GetHeight() - 56)
+
+	
+	subPanel.scoller:SetScript("OnMouseWheel", function(_, delta)
+		subPanel.scoller:SetValue(subPanel.scoller:GetValue() - (delta*25))
+	end)
+
+	subPanel.scoller:SetScript("OnValueChanged", function(_, value)
+		subPanel:SetPoint("TopLeft", menu, 5, -44 + value)
+	end)
+
+	subPanel:SetScript("OnShow", function()
+		for i, b in pairs(menu.panels) do
+			if b ~= subPanel then
+				b:Hide()
+			end
 		end
-		return Vert, Hori, xOffset, yOffset
+		menu.dropDown.Text:SetText(name)
+		subPanel.scoller:Show()
+		menu.PANEL = subPanel
+	end)
+
+	subPanel:SetScript("OnHide", function()
+		subPanel.scoller:Hide()
+	end)
+
+	subPanel.scoller:Hide()
+
+	local height = 0
+	for i, b in pairs(options) do
+		local style, title, get, set, values = unpack(b)
+		if OPTS[style] then
+			local b = OPTS[style](subPanel, title, get, set, values)
+
+			height = height + b.height
+			
+			b:ClearAllPoints()
+			b:SetPoint("BottomLeft", b:GetParent(), "TopLeft", 5, -(height+10))
+			b:SetPoint("TopLeft", b:GetParent(), "TopLeft", 5, -((height - b:GetHeight()) + 10))
+			subPanel.scoller:SetMinMaxValues(1, max(1, (height - menu:GetHeight()) + 52))
+		end
 	end
-	local function SelectProperSide(self)
-		local width = GetScreenWidth()
 
-		local Vert, Hori, xOffset, yOffset = GetRelPos(self)
-		local vert, hori
+		subPanel.scoller:SetValue(1)
+		
 
-		if Vert == "TOP" then
-			vert = "BOTTOM"
-		elseif Vert == "BOTTOM" then
-			vert = "TOP"
-		end
+	return subPanel
+end
 
-		if Hori == "LEFT" then
-			hori = "RIGHT"
-		elseif Hori == "RIGHT" then
-			hori = "LEFT"
-		end
-
-		return Hori, hori
+local GetRelPos = function(self)
+	local width, height = GetScreenWidth()/self:GetScale(), GetScreenHeight()/self:GetScale()
+	local x, y = self:GetCenter()
+	local xOffset, yOffset
+	local Hori = (x > width/2) and 'RIGHT' or 'LEFT'
+	if Hori == 'RIGHT' then
+		xOffset = self:GetRight() - width
+	else
+		xOffset = self:GetLeft()
 	end
-function sandCastle:NewMenu(widget, options)
-	if sandCastle.lastMenu and sandCastle.lastMenu.id ~= widget.id then
-		sandCastle.lastMenu:Hide()
+	local Vert = (y > height/2) and 'TOP' or 'BOTTOM'
+	if Vert == 'TOP' then
+		yOffset = self:GetTop() - height
+	else
+		yOffset = self:GetBottom()
 	end
+	return Vert, Hori, xOffset, yOffset
+end
+
+local function SelectProperSide(self)
+	local width = GetScreenWidth()
+
+	local Vert, Hori, xOffset, yOffset = GetRelPos(self)
+	local vert, hori
+
+	if Vert == "TOP" then
+		vert = "BOTTOM"
+	elseif Vert == "BOTTOM" then
+		vert = "TOP"
+	end
+
+	if Hori == "LEFT" then
+		hori = "RIGHT"
+	elseif Hori == "RIGHT" then
+		hori = "LEFT"
+	end
+
+	return Hori, hori
+end
+
+local panels = {}
+local mScale = 100
+
+local states = {
+		{"Bear Form",      "[bonusbar:3]"},
+		{"Prowl",          "[bonusbar:1,stealth]"},
+		{"Cat Form",       "[bonusbar:1]"},
+		{"Moonkin Form",   "[bonusbar:4]"},
+		{"Treant Form",    "[form:5]"}, 
+		{"Travel Form",    "[form:3]"}, 
+		{"Mount Form",     "[form:6]"},
+		{"Action Page 2",  "[bar:2]"},
+		{"Action Page 3",  "[bar:3]"},
+		{"Action Page 4",  "[bar:4]"},
+		{"Action Page 5",  "[bar:5]"},
+		{"Action Page 6",  "[bar:6]"}, 
+		{"Self Cast Key",  "[mod:SELFCAST]"},
+		{"CTRL-ALT-SHIFT", "[mod:alt,mod:ctrl,mod:shift]"},
+		{"CTRL-ALT",       "[mod:alt,mod:ctrl]"},
+		{"ALT-SHIFT",      "[mod:alt,mod:shift]"}, 
+		{"CTRL-SHIFT",     "[mod:ctrl,mod:shift]"}, 
+		{"ALT key",        "[mod:alt]"}, 
+		{"CTRL key",       "[mod:ctrl]"}, 
+		{"SHIFT key",      "[mod:shift]"}, 
+		{"Meta Key",       "[mod:meta]"},
+		{"Help",           "[help]"}, 
+		{"Harm",           "[harm]"}, 
+		{"No Target",      "[noexists]"},
+	 }
+
+local comp = {}
+
+function Addon:NewMenu(widget, options)
 	if menus[widget.id] then
-		sandCastle.lastMenu = menus[widget.id]
-		menus[widget.id].moved = nil
 		return menus[widget.id]
 	end
-	menus[widget.id] = CreateFrame("ScrollFrame", widget:GetName().."Menu", self.configOverlay, BackdropTemplateMixin and 'BackdropTemplate')
-	local menu = menus[widget.id]
-	menu:SetClampedToScreen(true)
-	menu:SetFrameStrata("HIGH")
-	menu:SetFrameLevel(7)
-	
-	
-	sandCastle.lastMenu = menu
+
+	if not IsShiftKeyDown() then
+		for i, b in pairs(panels) do
+			b:Hide()
+		end
+	end
+
+	local menu = CreateFrame("ScrollFrame", widget:GetName().."Menu", self.configOverlay, BackdropTemplateMixin and 'BackdropTemplate')
 	menu:SetBackdrop(BACKDROP_TOAST_12_12)
 	menu:SetBackdropColor(0, 0, 0, .45)
+	menu:SetClampedToScreen(true)
+	menu:SetFrameStrata("HIGH")
+	menus[widget.id] = menu
+	
+	menu.scroll = CreateFrame("ScrollFrame", nil, menu)
+	menu.scroll:SetPoint("BottomRight",0, 5)
+	menu.scroll:SetPoint("TopLeft", 0, -52)
+	
+	menu.SettingsPanel = CreateFrame("Frame", nil, menu.scroll)
+	menu.scroll:SetScrollChild(menu.SettingsPanel)
+	
+	local options = Addon.utility.tDuplicate(options)
+	
+	local display = {
+		"Display",
+		{
+			{
+				"dropDown",
+				"State",
+				function(parent) --getter
+					return widget.frame:GetCurrentUserDisplay()
+				end,
+				function(parent, value) --setter
+					widget.frame:SetCurrentUserDisplay(value)
+					if menu.PANEL then
+						menu.PANEL:Hide()
+						menu.PANEL:Show()
+					end
+				end,
+				function()
+					return {
+						{_G.DISABLE, "disable"},
+						{"Hide",_G.HIDE},
+						{"Show",_G.SHOW},
+						{"Opacity","Opacity"},
+					}
+				end,
+			},
+		
+			{
+				"editBox",
+				"Display State",
+				function(parent) --getter
+					return widget.frame:GetUserDisplayConditions()
+				end,
+				function(widget, value) --setter
+					return widget.frame:SetUserDisplayConditions(value)
+					--parent:IsEnabled()
+				end,
+			},		
+		},
+	}
+
+	for i , details in pairs(states) do
+		local name, value = unpack(details)
+		tinsert(display[2], {
+			"dropDown",
+			name,
+			function(parent) --getter
+				return widget.frame:GetUserDisplayConditionState(value)
+			end,
+			function(parent, value) --setter
+				widget.frame:UpdateUserDisplayCondition(name, value)
+					if menu.PANEL then
+						menu.PANEL:Hide()
+						menu.PANEL:Show()
+					end
+			end,
+			function()
+				return widget.frame:GetCurrentUserDisplayOptions()
+			end,
+		})
+	end
+	
+	tinsert(options, 2, display)
+	
+	menu.options = options
+	menu:SetSize(175, 300)
+	menu:EnableMouse(true)
+	menu:SetMovable(true)
+	menu:SetFrameLevel(7)
+	menu.widget = widget
 	menu.id = widget.id
+	menu.widgets = {}
+	menu.panels = {}
+	menu:Hide()
+	
 	menu.closeButton = CreateFrame("Button", nil, menu, "UIPanelCloseButton")
 	menu.closeButton:SetPoint("TopRight", menu)
 	menu.closeButton:SetFrameStrata('HIGH')
@@ -199,19 +546,19 @@ function sandCastle:NewMenu(widget, options)
 	menu.title:SetJustifyH("LEFT")
 	menu.title:SetJustifyV("TOP") 
 	
-	menu.widget = widget
-	
-	menu:Hide()
-	menu:SetSize(150, 300)
-
-	menu:EnableMouse(true)
-	menu:SetMovable(true)
-	menu.moved = nil
+	menu:SetScript("OnMouseUp", function() menu:StopMovingOrSizing() end)
 	menu:SetScript("OnMouseDown", function() menu:StartMoving() end)
 	menu:SetScript("OnShow", function()
-		if sandCastle.lastMenu and sandCastle.lastMenu.id ~= widget.id then
-			sandCastle.lastMenu:Hide()
+		sandCastle.FlyPaper.SetScale(menu, mScale/100)
+		menu:SetScale(mScale/100)
+		if not IsShiftKeyDown() then
+			for i, b in pairs(panels) do
+				if b ~= menu then
+					b:Hide()
+				end
+			end
 		end
+		
 		local point, oPoint = SelectProperSide(widget)
 		
 		menu:ClearAllPoints()
@@ -220,111 +567,20 @@ function sandCastle:NewMenu(widget, options)
 		local x, y  = menu:GetRect()
 		menu:ClearAllPoints()
 		menu:SetPoint("BottomLeft", x, y)
-		
-		
-		
-
-		
-		
-	end)
-	menu:SetScript("OnMouseUp", function() moved = true menu:StopMovingOrSizing() end)
-
-	menu.panels = {}
-	dropIndex = dropIndex + 1
-	local dropDown = CreateFrame("Button", menu:GetName().."dropDown"..dropIndex, menu, "UIDropDownMenuTemplate")
-	dropDown:SetPoint("TopLeft",-5, -38)
-	dropDown:SetScale(.75)
-
-	UIDropDownMenu_Initialize(dropDown, function(button, menuLevel, menuList)
-		if menuLevel == nil then return end
-
-	--	local selected = self:GetSavedValue()
-
-		for i , panel in pairs(options) do
-		
-		
-			local name, opts = unpack(panel)
-		
-			if menu.active and menu.active.id == name then
-			
-			else
-				local info = UIDropDownMenu_CreateInfo()
-				info.notCheckable = true
-				info.text = name
-				info.value = name
-				--info.selected = name == selected
-				info.func = function()
-					if menu.active then
-						menu.active:Hide()
-					end
-					menu.panels[i]:Show()
-					
-					UIDropDownMenu_SetText(button, name)
-				end
-
-				UIDropDownMenu_AddButton(info, menuLevel)
-
-			end
-		end
-
 	end)
 
-	menu.widgets = {}
-
-	menu.scroller = CreateFrame("Frame", nil, menu)
-
-	menu:SetScrollChild(menu.scroller)
-
-		menu.paneltitle = menu:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-		menu.paneltitle:SetPoint("Left", dropDown, 0, 0)
-		menu.paneltitle:SetText(name)
-
-		dropDown.Text:SetFontObject(GameFontNormal)
-
-
-		menu.paneltitle:SetJustifyH("RIGHT")
-	for i , panel in pairs(options) do
-		local name, opts = unpack(panel)
-		
-		local subPanel = CreateFrame("Frame", nil, menu.scroller)
-
-		subPanel.title = menu.paneltitle
-
-		tinsert(menu.panels, subPanel)
-		subPanel.widget = widget
-		
-		subPanel.id = name
-		
-		subPanel:SetScript("OnShow", function() menu.active = subPanel dropDown.Text:SetText(name) end)
-		
-		subPanel:SetPoint("TopLeft", menu, 5, -45)
-		subPanel:SetSize(140, 245)
-		
-		subPanel:Hide()
-		
-		subPanel.widgets = {}
-		
-		local height = 0
-		for i, b in pairs(opts) do
-			local style, title, get, set, values = unpack(b)
-			if OPTS[style] then
-				local b = OPTS[style](subPanel, title, get, set, values)
-
-				height = height + b.height
-				
-				b:ClearAllPoints()
-				b:SetPoint("BottomLeft", b:GetParent(), "TopLeft", 5, -(height+10))
-					
-			end
-		end
-	end
-	
+	menu:SetScript("OnMouseWheel", function(_, delta)
+		if not IsShiftKeyDown() then return end
+		mScale = min(250, max(100, mScale + (delta * 5)))
+		sandCastle.FlyPaper.SetScale(menu, mScale/100)
+	end)
 
 	
-	
-	if menu.panels[1] then
-		menu.panels[1]:Show()
+	for i , panel in pairs(menu.options) do
+		local page = OPTS.panel(menu, unpack(panel))
+		if i == 1 then page:Show() end
 	end
 
+	tinsert(panels, menu)
 	return menu
 end

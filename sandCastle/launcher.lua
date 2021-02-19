@@ -1,4 +1,4 @@
--- lancher.lua - The Dominos minimap button
+-- lancher.lua - The minimap button
 local AddonName, Addon = ...
 local Launcher = Addon:NewModule('Launcher')
 local L = LibStub('AceLocale-3.0'):GetLocale(AddonName)

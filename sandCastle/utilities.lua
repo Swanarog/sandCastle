@@ -17,6 +17,7 @@ do--table management. instead of cutting single use tables off, reuse them.
 	end
 
 	local removingTables = {}
+	
 	function utility.deconstructTable(returning, initiator)
 		if (not returning)
 		or (type(returning) ~= "table")

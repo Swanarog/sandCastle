@@ -1,0 +1,8 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<Script file="mixins.lua"/>
+	<Frame name="sandCastleSecureFrameTemplate" virtual="true" inherits="SecureHandlerStateTemplate" mixin="sandCastleSecureFrameMixin">
+		<Scripts>
+			<OnLoad method="OnLoad"/>
+		</Scripts>
+	</Frame>
+</Ui>

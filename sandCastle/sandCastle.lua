@@ -1,5 +1,7 @@
 --General structure for handling frames of all types!
-local AddonName, sandCastle = ...
+local sandCastle = LibStub("AceAddon-3.0"):GetAddon(...)
+
+sandCastle.callbacks = LibStub('CallbackHandler-1.0'):New(sandCastle)
 
 function sandCastle:OnInitialize()
     -- setup db
@@ -7,11 +9,13 @@ function sandCastle:OnInitialize()
     self:UpgradeDatabase()
 
 	self.frame = CreateFrame("Frame", "sandCastle_Frame", UIParent)
+		--all frames handled by sandCastele are parented to this frame.
 	self.frame:SetAllPoints(UIParent)
 	
 	self.configOverlay = CreateFrame("Frame", "sandCastle_configOverlay", self.frame)
 	tinsert(UISpecialFrames, self.configOverlay:GetName())
-	--make a frame disappear on entering combat or on escape pressed, taint free ~Thanks Blizzard! --I'm sure this will be disabled for addons one day...
+	--make a frame disappear on entering combat or on escape pressed, taint free ~Thanks Blizzard!
+		--I'm sure this will be disabled for addons one day...
 	
 	self.configOverlay:SetFrameStrata("HIGH")
 	self.configOverlay:SetAllPoints(UIParent)
@@ -59,6 +63,11 @@ function sandCastle:OnInitialize()
 	end)
 end
 
+function sandCastle:CreateOverlay(widget)
+
+
+end
+
 function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options)
 	local frameName = widget:GetName()
 	local _frameName = AddonName.."_"..frameName
@@ -71,54 +80,68 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 		return _G[_frameName]
 	end
 
-	local container = CreateFrame("Frame", nil, widget:GetParent() or self.frame)
+	local container = CreateFrame("Frame", nil, widget:GetParent() or self.frame, "sandCastleSecureFrameTemplate")
 
+	container.widget = widget
 	container:SetMovable(true)
 	container:EnableMouse(false)
 	container:SetUserPlaced(true)
 	container:SetClampedToScreen(true)
 	
+	
 	local w, h = widget:GetSize()
 	container:SetSize(w, h)
 	widget.frame = container
+	
+	widget:ClearAllPoints()
+	widget:SetPoint("Center", container)
+	
 	widget:SetAllPoints(container)
 	self.widgets[_frameName] = widget
 	
+	
+	widget:SetParent(container)
+
+	
 	do --hook scripts on widget to control container instead.
-		function widget:SetPoint(...)
-			--yes, i know, possible taint issue. I'll fix it, if it actually causes issues.
-			local t = {...}
-			if not tContains(t, container) then
-				container:SetPoint(...)
-			end
-		end
-		
+
 		function widget:GetPoint(...)
 			return container:GetPoint(...)
 		end
+
+		hooksecurefunc(widget, "SetPoint", function(...)
+			--yes, i know, possible taint issue. I'll fix it, if it actually causes issues.
+			widget:ClearAllPoints()
+			widget:SetPoint("Center", container)
+			if not tContains({...}, container) then
+				container:SetPoint(...)
+			end
+		end)
 		
 		hooksecurefunc(widget, "SetSize", function(_, w, h)
-			container:SetSize(w, h)
+			sandCastle.Resize(widget)
 		end)
 		hooksecurefunc(widget, "SetWidth", function(_, w)
-			container:SetWidth(w)
+			sandCastle.Resize(widget)
 		end)
 		hooksecurefunc(widget, "SetHeight", function(_, h)
-			container:SetHeight(h)
+			sandCastle.Resize(widget)
 		end)
 		hooksecurefunc(widget, "SetScale", function(_, s)
-			widget:SetScale(1)
-			container:SetScale(s)
+			sandCastle.Resize(widget)	
 		end)
+		
 		hooksecurefunc(widget, "ClearAllPoints", function()
-			widget:SetAllPoints(container)
+			widget:SetPoint("Center", container)
 			container:ClearAllPoints()
 		end)
+		
 		local sentBySelf
-		hooksecurefunc(widget, "SetAllPoints", function()
+		hooksecurefunc(widget, "SetAllPoints", function(...)
 			if not sentBySelf then
-				widget:SetAllPoints(container)
 				sentBySelf = true
+				widget:SetPoint("Center", container)
+				container:SetAllPoints(...)
 			else
 				sentBySelf = nil
 			end
@@ -191,7 +214,7 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 	else
 		do --reroute OnUpdate and OnEvent to sandCastle for consolidation
 			local sentLocally
-			hooksecurefunc(widget, "SetScript", function(script, func)
+			hooksecurefunc(widget, "SetScript", function(_, script, func)
 				if sentLocal then sentLocal = nil return end
 				sentLocal = true			
 				local scriptHandler = self.scripts[script]
@@ -206,7 +229,7 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 				end
 			end)
 		
-			hooksecurefunc(widget, "HookScript", function(script, func)
+			hooksecurefunc(widget, "HookScript", function(_, script, func)
 				if sentLocal then sentLocal = nil return end
 				sentLocal = true			
 
@@ -225,7 +248,7 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 		end
 		--reroute events onto sandCastle!
 		local sentLocally
-		hooksecurefunc(widget, "RegisterEvent", function(event, ...)
+		hooksecurefunc(widget, "RegisterEvent", function(_, event, ...)
 			sentLocal = true
 			widget:UnregisterEvent(event, ...)
 			self.eventRegistration[event] = self.eventRegistration[event] or sandCastle.utility.getTable()
@@ -233,7 +256,7 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 			self.frame:RegisterEvent(event, ...)
 		end)
 
-		hooksecurefunc(widget, "UnregisterEvent", function(event, ...)
+		hooksecurefunc(widget, "UnregisterEvent", function(_, event, ...)
 			if sentLocal then sentLocal = nil return end
 			self.eventRegistration[event] = self.eventRegistration[event] or sandCastle.utility.getTable()
 			self.eventRegistration[event][_frameName] = nil
@@ -258,8 +281,31 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 		self.overlays[_frameName] = overlay
 		overlay.text:SetAllPoints(overlay)
 		overlay:SetAllPoints(container)
+		
+		widget.overlay = overlay
+		
+		local font = overlay.text:GetFont()
+		
+		overlay:SetScript("OnShow", function()			
+			local length = overlay.text:GetStringWidth()
+			overlay.text:SetFont(font, 15)
+			local width = overlay:GetWidth()
+			if length > width then
+				local size = 59
+				while length > width do
+					if size/4 < 5 then
+						break
+					end
+					overlay.text:SetFont(font, size/4)
+					length = overlay.text:GetStringWidth()
+					size = size - .25
+				end
+			end
+			overlay:SetScript("OnShow", nil)
+		end)
+
 		overlay:Show()
-	
+
 		overlay:SetBackdrop({
 			bgFile = [[Interface\ChatFrame\ChatFrameBackground]],
 			edgeFile = [[Interface\ChatFrame\ChatFrameBackground]],
@@ -268,6 +314,14 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 		})
 		overlay:SetBackdropColor(139/255, 89/255, 29/255, .35)
 		overlay:SetBackdropBorderColor(112/255, 69/255, 19/255, .55)
+
+		overlay:SetScript("OnEnter", function()
+			overlay:SetBackdropBorderColor(200/255, 100/255, 19/255, .85)
+		end)
+
+		overlay:SetScript("OnLeave", function()
+			overlay:SetBackdropBorderColor(112/255, 69/255, 19/255, .55)
+		end)
 
 		overlay:SetScript("OnMouseDown", function(_,btn)
 			if btn == "LeftButton" then
@@ -314,8 +368,37 @@ function sandCastle:Register(AddonName, widget, widgetHandler, defaults, options
 	
 	sandCastle.Reanchor(widget)
 	
+	
+	container:UpdateUserDisplayConditions()
+	
 	return container
 end
+
+function sandCastle:GetScrollContainer(name)
+	local scrollFrame = CreateFrame("Frame", name, sandCastle.frame)
+	scrollFrame.wrapper = CreateFrame("ScrollFrame", nil, scrollFrame)
+	scrollFrame.wrapper.ScrollChild = CreateFrame("Frame", nil, scrollFrame.wrapper)
+	scrollFrame.wrapper:SetScrollChild(scrollFrame.wrapper.ScrollChild)
+	scrollFrame.wrapper.ScrollChild:SetAllPoints(scrollFrame.wrapper)
+	scrollFrame.wrapper:SetPoint("BottomRight", 0, 0)
+	scrollFrame.wrapper:SetPoint("TopLeft", 0, 0)
+	
+	function scrollFrame:SetChild(child)		
+		hooksecurefunc(child, "SetParent", function(_, parent)
+			if parent ~= scrollFrame.wrapper.ScrollChild then
+				child:SetParent(scrollFrame.wrapper.ScrollChild)
+			end
+		end)
+		child:SetParent(scrollFrame.wrapper.ScrollChild)
+	end
+	
+	return scrollFrame
+end
+
+function sandCastle:GetContainer()
+
+end
+
 
 --alignment grid --inspired by the fact that Dominos now uses one, but designed from scratch.
 local Griddle = {_lines = {}}
@@ -326,7 +409,7 @@ function Griddle:GetGridScale()
 	sandCastleDB.gridSize = not tonumber(sandCastleDB.gridSize) and 50 or sandCastleDB.gridSize
 	
     local xlines = _G.Round( Dominos and Dominos:GetAlignmentGridSize()
-		or (sandCastleDB.gridSize or 50) * 2 / 2) * 2
+		or (sandCastleDB.gridSize or 50)) * 2
     local width, height = GetScreenWidth(), GetScreenHeight()
     local ylines = _G.Round((xlines / (width / height)) / 2) * 2
     return xlines, ylines, width / xlines, height / ylines
@@ -432,12 +515,9 @@ local function slider(menu)
 	return slider
 end
 
-
 function sandCastle:Locked()
 	return self.configOverlay:IsVisible()
 end
-
-
 
 function sandCastle:ToggleConfig()
 	ToggleFrame(self.configOverlay)
@@ -477,7 +557,7 @@ function sandCastle:ToggleConfig()
 		infoPanel.title:SetJustifyV("TOP") 
 		
 		infoPanel.details = infoPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-		infoPanel.details:SetText("- Right click on a green overlay for more options." ..
+		infoPanel.details:SetText("- Right click on an orange overlay for more options." ..
 		"|n" .. "- Left click and drag your mouse to move a frame."..
 		"|n".. "- Alt+Right-Click a frame to reset it to default.")
 		infoPanel.details:SetPoint("BottomRight", -8, 50)

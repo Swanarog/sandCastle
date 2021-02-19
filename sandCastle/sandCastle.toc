@@ -16,6 +16,8 @@ libs\LibFlyPaper-2.0\LibFlyPaper-2.0.lua
 
 localization.xml
 
+template.xml
+
 utilities.lua
 dbSetup.lua
 frameHandler.lua
